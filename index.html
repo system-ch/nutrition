@@ -100,7 +100,7 @@ dashboard:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/
 usuarios:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14.4c2 .7 3.5 2.5 3.5 5.6"/></svg>',
 out:'<svg viewBox="0 0 24 24"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 8l4 4-4 4M20 12H9"/></svg>'};
 let busq='',me=null,tab='registro',items=[],col=null,msg='',filtro='todos';
-let users=[],ucol=null,lmode='login',lmsg='';
+let users=[],ucol=null,lmode='login',lmsg='',flg='todos';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'S/ '+Number(n||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -240,12 +240,12 @@ function registroAdmin(){
   return`<div class="card"><h2>Registro de vendedores</h2>${tabla(items.slice(),true,'ver')}</div>`;
 }
 function historialView(admin){
-  const ok=x=>String(x.descripcion).toLowerCase().includes(busq.trim().toLowerCase());
+  const ok=x=>String(x.descripcion).toLowerCase().includes(busq.trim().toLowerCase())&&(admin&&flg!=='todos'?x.lugar===flg:true);
   const buscador=`<label>Buscar por nombre de producto<input id="bq" type="search" placeholder="Ej. alimento para perro" value="${esc(busq)}" autocomplete="off"></label>`;
   if(!admin){return`<div class="card"><h2>Mi historial</h2><div style="margin-bottom:14px;max-width:420px">${buscador}</div>${tabla(items.filter(x=>x.vendedor===me&&ok(x)),false,'desc')}</div>`}
   const vs=['vendedor1','vendedor2',...users.filter(u=>u.aprobado).map(u=>u.dni)];
   const lista=filtro==='todos'?vs:[filtro];
-  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${esc(v)}" ${filtro===v?'selected':''}>${esc(nom(v))}</option>`).join('')}</select></label>${buscador}</div>`+
+  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${esc(v)}" ${filtro===v?'selected':''}>${esc(nom(v))}</option>`).join('')}</select></label><label>Lugar<select id="flg"><option value="todos">Todos los lugares</option>${LUGARES.map(l=>`<option ${flg===l?'selected':''}>${l}</option>`).join('')}</select></label>${buscador}</div>`+
    lista.map(v=>`<div class="card" style="margin-bottom:12px"><h2>Historial de ${esc(nom(v))}</h2>${tabla(items.filter(x=>x.vendedor===v&&ok(x)),false,'ver')}</div>`).join('');
 }
 const totDesc=r=>r.descuentos?r.descuentos.reduce((s,d)=>s+d.total,0):(r.descontado||0)*r.costo;
@@ -261,8 +261,8 @@ function tabla(rows,showV,act){
 function dashView(){
   const m={};
   items.forEach(r=>{const k=String(r.descripcion).trim().toLowerCase();
-    const o=m[k]||(m[k]={nombre:r.descripcion,stock:0,valor:0,vendidos:0,porV:{},td:0});
-    o.stock+=r.cantidad;o.td+=totDesc(r);o.valor+=r.cantidad*r.costo;o.vendidos+=r.descontado||0;o.porV[r.vendedor]=(o.porV[r.vendedor]||0)+r.cantidad});
+    const o=m[k]||(m[k]={nombre:r.descripcion,stock:0,valor:0,vendidos:0,porV:{},porL:{},td:0});
+    o.stock+=r.cantidad;o.td+=totDesc(r);o.valor+=r.cantidad*r.costo;o.vendidos+=r.descontado||0;o.porV[r.vendedor]=(o.porV[r.vendedor]||0)+r.cantidad;const lg=r.lugar||'Sin lugar';o.porL[lg]=(o.porL[lg]||0)+r.cantidad});
   const L=Object.values(m).sort((a,b)=>b.stock-a.stock);
   const max=Math.max(1,...L.map(x=>x.stock));
   const tot=L.reduce((s,x)=>s+x.stock,0),val=L.reduce((s,x)=>s+x.valor,0),des=L.reduce((s,x)=>s+x.vendidos,0),td=L.reduce((s,x)=>s+x.td,0);
@@ -273,8 +273,8 @@ function dashView(){
    <div class="card stat"><b>${kCant}</b><span>Cantidad</span></div>
    <div class="card stat"><b>${money(kTot)}</b><span>Total (costo × cantidad)</span></div></div>
   <div class="card"><h2>Stock por producto</h2>${bajos?`<p class="low-t">${bajos} producto(s) con 5 unidades o menos.</p>`:''}
-  ${L.length?`<div class="scroll"><table><thead><tr><th>Producto</th><th>Nivel de stock</th><th class="n">Stock</th><th>Por vendedor</th></tr></thead><tbody>
-  ${L.map(x=>`<tr><td>${esc(x.nombre)}</td><td><div class="bar ${x.stock<=5?'low':''}"><i style="width:${Math.max(3,x.stock/max*100)}%"></i></div></td><td class="n ${x.stock<=5?'low-t':''}"><b>${x.stock}</b></td><td>${Object.entries(x.porV).map(([v,q])=>`<span class="pill ${vcls(v)}">${esc(nom(v))}: ${q}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay productos registrados.</div>'}
+  ${L.length?`<div class="scroll"><table><thead><tr><th>Producto</th><th>Nivel de stock</th><th class="n">Stock</th><th>Por vendedor</th><th>Por lugar</th></tr></thead><tbody>
+  ${L.map(x=>`<tr><td>${esc(x.nombre)}</td><td><div class="bar ${x.stock<=5?'low':''}"><i style="width:${Math.max(3,x.stock/max*100)}%"></i></div></td><td class="n ${x.stock<=5?'low-t':''}"><b>${x.stock}</b></td><td>${Object.entries(x.porV).map(([v,q])=>`<span class="pill ${vcls(v)}">${esc(nom(v))}: ${q}</span>`).join(' ')}</td><td>${Object.entries(x.porL).map(([l,q])=>`<span class="pill">${esc(l)}: ${q}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay productos registrados.</div>'}
   </div>`;
 }
 function bindMain(){
@@ -286,6 +286,7 @@ function bindMain(){
     await addItem(r);msg='Producto guardado en tu historial.';render();
   };
   const bq=$('#bq');if(bq)bq.oninput=()=>{busq=bq.value;const p=bq.selectionStart;render();const n=$('#bq');n.focus();n.setSelectionRange(p,p)};
+  const fg=$('#flg');if(fg)fg.onchange=()=>{flg=fg.value;render()};
   const fl=$('#flt');if(fl)fl.onchange=()=>{filtro=fl.value;render()};
   document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{
     const r=items.find(x=>x.id===b.dataset.del);if(!r)return;
