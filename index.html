@@ -97,22 +97,28 @@ const LOGO="data:image/webp;base64,UklGRohaAABXRUJQVlA4WAoAAAAQAAAAUwEAUwEAQUxQS
 const ICONS={registro:'<svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4h6v3H9zM12 10v6M9 13h6"/></svg>',
 historial:'<svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>',
 dashboard:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/></svg>',
+usuarios:'<svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6M16 4.5a3.5 3.5 0 0 1 0 7M18 14.4c2 .7 3.5 2.5 3.5 5.6"/></svg>',
 out:'<svg viewBox="0 0 24 24"><path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 8l4 4-4 4M20 12H9"/></svg>'};
 let busq='',me=null,tab='registro',items=[],col=null,msg='',filtro='todos';
+let users=[],ucol=null,lmode='login',lmsg='';
 const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'S/ '+Number(n||0).toLocaleString('es-PE',{minimumFractionDigits:2,maximumFractionDigits:2});
 const hoy=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const fmtF=f=>{const[a,m,d]=String(f).split('-');return d?d+'/'+m+'/'+a:f};
+const LUGARES=['Ica','Bujama','Callao','Lima','Ancón'];
 const vcls=v=>v==='vendedor1'?'v1':'v2';
 
 /* ---- almacenamiento: base compartida si está disponible, si no este navegador ---- */
-function loadLocal(){try{items=JSON.parse(localStorage.getItem('pn_items')||'[]')}catch(e){items=[]}}
+function loadLocal(){try{items=JSON.parse(localStorage.getItem('pn_items')||'[]')}catch(e){items=[]}try{users=JSON.parse(localStorage.getItem('pn_users')||'[]')}catch(e){users=[]}}
+function saveUsersLocal(){try{localStorage.setItem('pn_users',JSON.stringify(users))}catch(e){}}
 function saveLocal(){try{localStorage.setItem('pn_items',JSON.stringify(items))}catch(e){}}
 async function initStore(){
   try{
     const db=window.claude&&await claude.use('db');
-    if(db){col=db.collection('registros');col.onSnapshot(s=>{items=s.docs.map(d=>({id:d.id,...d.data()}));render()},()=>{});return}
+    if(db){col=db.collection('registros');ucol=db.collection('usuarios');
+      col.onSnapshot(s=>{items=s.docs.map(d=>({id:d.id,...d.data()}));if(me)render()},()=>{});
+      ucol.onSnapshot(s=>{users=s.docs.map(d=>({id:d.id,...d.data()}));if(me==='administrador')render()},()=>{});return}
   }catch(e){}
   loadLocal();render();
 }
@@ -135,6 +141,21 @@ async function ingresar(id,fecha,n){
   if(col){try{await col.doc(id).update(upd)}catch(e){return false}}
   Object.assign(it,upd);if(!col)saveLocal();return true;
 }
+const unombre=x=>{const a=(x.apellidos||'').trim(),n=(x.nombres||'').trim();return a&&n?a+', '+n:(a||n||String(x.nombre||x.nombreCompleto||'').trim()||'(sin nombre)')};
+const nom=u=>{const x=users.find(y=>y.dni===u);return x?unombre(x):u};
+async function addUser(r){
+  if(ucol){try{await ucol.add(r);return true}catch(e){return false}}
+  r.id='u'+Date.now();users.push(r);saveUsersLocal();return true;
+}
+async function autorizar(id){
+  const u=users.find(x=>x.id===id);if(!u)return false;
+  if(ucol){try{await ucol.doc(id).update({aprobado:true})}catch(e){return false}}
+  u.aprobado=true;if(!ucol)saveUsersLocal();return true;
+}
+async function eliminarUser(id){
+  if(ucol){try{await ucol.doc(id).delete()}catch(e){return false}}
+  users=users.filter(x=>x.id!==id);if(!ucol)saveUsersLocal();return true;
+}
 async function eliminar(id){
   if(col){try{await col.doc(id).delete()}catch(e){return false}}
   items=items.filter(x=>x.id!==id);if(!col)saveLocal();return true;
@@ -145,32 +166,70 @@ function render(){
   const a=$('#app');
   if(!me){a.innerHTML=loginView();bindLogin();return}
   const admin=me==='administrador';
-  const tabs=admin?[['registro','Registro'],['historial','Historial'],['dashboard','Dashboard']]:[['registro','Registro'],['historial','Mi historial']];
+  const pend=users.filter(u=>!u.aprobado).length;
+  const tabs=admin?[['registro','Registro'],['historial','Historial'],['dashboard','Dashboard'],['usuarios','Usuarios'+(pend?' ('+pend+')':'')]]:[['registro','Registro'],['historial','Mi historial']];
   if(!tabs.some(t=>t[0]===tab))tab='registro';
   a.innerHTML=`<div class="shell"><aside><div class="brand"><img src="${LOGO}" alt="Pet Nutrition"><div><b>Pet Nutrition</b><small>Control de stock</small></div></div>
   <nav>${tabs.map(t=>`<button data-t="${t[0]}" class="${tab===t[0]?'on':''}" title="${t[1]}">${ICONS[t[0]]}<span>${t[1]}</span></button>`).join('')}</nav>
-  <div class="user"><span class="pill ${admin?'':vcls(me)}">${esc(me)}</span><button class="sec" id="out" title="Cerrar sesión">${ICONS.out}<span>Salir</span></button></div></aside>
-  <main class="wrap"><div class="top"><div><h1>${tabs.find(t=>t[0]===tab)[1]}</h1><p>Hola, ${esc(me)}</p></div><span class="pill">${new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'})}</span></div>
-  ${tab==='registro'?(admin?registroAdmin():registroView()):tab==='historial'?historialView(admin):dashView()}</main></div>`;
+  <div class="user"><span class="pill ${admin?'':vcls(me)}">${esc(nom(me))}</span><button class="sec" id="out" title="Cerrar sesión">${ICONS.out}<span>Salir</span></button></div></aside>
+  <main class="wrap"><div class="top"><div><h1>${tabs.find(t=>t[0]===tab)[1].replace(/ \(\d+\)$/,'')}</h1><p>Hola, ${esc(nom(me))}</p></div><span class="pill">${new Date().toLocaleDateString('es-PE',{weekday:'long',day:'numeric',month:'long'})}</span></div>
+  ${tab==='registro'?(admin?registroAdmin():registroView()):tab==='historial'?historialView(admin):tab==='usuarios'?usuariosView():dashView()}</main></div>`;
   $('#out').onclick=()=>{me=null;msg='';render()};
   document.querySelectorAll('nav button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;msg='';busq='';render()});
   bindMain();
 }
-function loginView(){return`<div class="login"><div class="lcard"><div class="lbrand"><img class="biglogo" src="${LOGO}" alt="Pet Nutrition"><h1>Pet Nutrition</h1><p>Registro, historial y stock de tus productos.</p></div>
+function loginView(){
+  const brand=`<div class="lbrand"><img class="biglogo" src="${LOGO}" alt="Pet Nutrition"><h1>Pet Nutrition</h1><p>Registro, historial y stock de tus productos.</p></div>`;
+  if(lmode==='reg')return`<div class="login"><div class="lcard">${brand}
+<form class="loginform" id="rg"><h2>Inscribirse</h2><label>Apellidos<input id="ra" autocomplete="family-name" required></label>
+<label>Nombres<input id="rn" autocomplete="given-name" required></label>
+<label>DNI<input id="rd" inputmode="numeric" maxlength="8" pattern="[0-9]{8}" placeholder="8 dígitos" required></label>
+<p class="err" id="e">${esc(lmsg)}</p><button type="submit">Enviar inscripción</button><button type="button" class="sec" id="back">Volver a ingresar</button></form></div></div>`;
+  return`<div class="login"><div class="lcard">${brand}
 <form class="loginform" id="lf"><h2>Ingresar</h2><label>Usuario<input id="u" autocomplete="username" autocapitalize="none" required></label>
 <label>Clave<input id="p" type="password" autocomplete="current-password" required></label>
-<p class="err" id="e"></p><button type="submit">Ingresar</button></form></div></div>`}
+<p class="${lmsg[0]==='!'?'err':'ok'}" id="e">${esc(lmsg.replace(/^!/,''))}</p><button type="submit">Ingresar</button><button type="button" class="sec" id="goreg">Inscribirse</button></form></div></div>`}
 function bindLogin(){
-  $('#lf').onsubmit=e=>{e.preventDefault();
-    const u=$('#u').value.trim().toLowerCase(),p=$('#p').value;
-    if(USERS[u]&&USERS[u]===p){me=u;tab='registro';render()}
-    else $('#e').textContent='Usuario o clave incorrectos. Revisa e intenta de nuevo.';
-  };
+  const lf=$('#lf');
+  if(lf){
+    $('#goreg').onclick=()=>{lmode='reg';lmsg='';render()};
+    lf.onsubmit=e=>{e.preventDefault();lmsg='';
+      const u=$('#u').value.trim().toLowerCase(),p=$('#p').value;
+      if(USERS[u]&&USERS[u]===p){me=u;tab='registro';render();return}
+      const x=users.find(y=>y.dni&&y.dni===u);
+      if(x&&p===x.dni){
+        if(x.aprobado){me=x.dni;tab='registro';render();return}
+        $('#e').className='err';$('#e').textContent='Tu inscripción aún está pendiente. El administrador debe autorizar tu ingreso.';return;
+      }
+      $('#e').className='err';$('#e').textContent='Usuario o clave incorrectos. Revisa e intenta de nuevo.';
+    };
+  }
+  const rg=$('#rg');
+  if(rg){
+    $('#back').onclick=()=>{lmode='login';lmsg='';render()};
+    rg.onsubmit=async e=>{e.preventDefault();
+      const ap=$('#ra').value.trim().replace(/\s+/g,' '),no=$('#rn').value.trim().replace(/\s+/g,' '),dni=$('#rd').value.trim();
+      const er=t=>{$('#e').textContent=t};
+      if(!ap||!no)return er('Completa apellidos y nombres.');
+      if(!/^\d{8}$/.test(dni))return er('El DNI debe tener 8 dígitos.');
+      if(USERS[dni]||users.some(y=>y.dni===dni))return er('Ese DNI ya está inscrito.');
+      const ok=await addUser({dni,apellidos:ap,nombres:no,aprobado:false,creado:Date.now()});
+      if(!ok)return er('No se pudo enviar la inscripción. Intenta de nuevo.');
+      lmode='login';lmsg='Inscripción enviada. Tu usuario y tu clave son tu DNI. El administrador debe autorizar tu ingreso.';render();
+    };
+  }
+}
+function usuariosView(){
+  const L=users.slice().sort((a,b)=>(a.aprobado?1:0)-(b.aprobado?1:0)||(b.creado||0)-(a.creado||0));
+  if(!L.length)return`<div class="card"><h2>Solicitudes de ingreso</h2><div class="empty">Aún no hay personas inscritas.</div></div>`;
+  return`<div class="card"><h2>Solicitudes de ingreso</h2><p class="note" style="margin-bottom:12px">Usuario y clave de cada persona: su DNI.</p><div class="scroll"><table><thead><tr><th>Apellidos y nombres</th><th>DNI</th><th>Estado</th><th></th></tr></thead><tbody>
+  ${L.map(u=>`<tr><td>${esc(unombre(u))}</td><td>${esc(u.dni||'—')}</td><td><span class="pill ${u.aprobado?'v2':'v1'}">${u.aprobado?'Autorizado':'Pendiente'}</span></td><td>${u.aprobado?'':`<button data-aut="${esc(u.id)}">Autorizar</button> `}<button class="sec" data-udel="${esc(u.id)}" title="Eliminar usuario" aria-label="Eliminar ${esc(unombre(u))}">✕ Eliminar</button></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 function registroView(){
   return`<div class="card"><h2>Registrar producto</h2>
   <form class="grid form" id="rf">
    <label>Fecha<input type="date" id="f" value="${hoy()}" required></label>
+   <label>Lugar<select id="lg" required><option value="">Selecciona un lugar</option>${LUGARES.map(l=>`<option>${l}</option>`).join('')}</select></label>
    <label>Descripción del producto<input id="d" placeholder="Ej. Alimento para perro adulto 15 kg" required></label>
    <label>Costo del producto (S/)<input id="c" type="number" min="0" step="0.01" required></label>
    <label>Cantidad<input id="q" type="number" min="1" step="1" required></label>
@@ -184,10 +243,10 @@ function historialView(admin){
   const ok=x=>String(x.descripcion).toLowerCase().includes(busq.trim().toLowerCase());
   const buscador=`<label>Buscar por nombre de producto<input id="bq" type="search" placeholder="Ej. alimento para perro" value="${esc(busq)}" autocomplete="off"></label>`;
   if(!admin){return`<div class="card"><h2>Mi historial</h2><div style="margin-bottom:14px;max-width:420px">${buscador}</div>${tabla(items.filter(x=>x.vendedor===me&&ok(x)),false,'desc')}</div>`}
-  const vs=['vendedor1','vendedor2'];
+  const vs=['vendedor1','vendedor2',...users.filter(u=>u.aprobado).map(u=>u.dni)];
   const lista=filtro==='todos'?vs:[filtro];
-  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${v}" ${filtro===v?'selected':''}>${v}</option>`).join('')}</select></label>${buscador}</div>`+
-   lista.map(v=>`<div class="card" style="margin-bottom:12px"><h2>Historial de ${v}</h2>${tabla(items.filter(x=>x.vendedor===v&&ok(x)),false,'ver')}</div>`).join('');
+  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${esc(v)}" ${filtro===v?'selected':''}>${esc(nom(v))}</option>`).join('')}</select></label>${buscador}</div>`+
+   lista.map(v=>`<div class="card" style="margin-bottom:12px"><h2>Historial de ${esc(nom(v))}</h2>${tabla(items.filter(x=>x.vendedor===v&&ok(x)),false,'ver')}</div>`).join('');
 }
 const totDesc=r=>r.descuentos?r.descuentos.reduce((s,d)=>s+d.total,0):(r.descontado||0)*r.costo;
 function tabla(rows,showV,act){
@@ -196,8 +255,8 @@ function tabla(rows,showV,act){
   const del=r=>act==='desc'?` <button class="sec xdel" data-del="${esc(r.id)}" title="Eliminar producto" aria-label="Eliminar ${esc(r.descripcion)}">✕</button>`:'';
   const addb=r=>act==='ver'?` <button class="add" data-open="${esc(r.id)}" data-mode="add">+ Stock</button>`:'';
   const btn=r=>(act==='desc'&&r.cantidad>0?`<button class="dis" data-open="${esc(r.id)}" data-mode="edit">Descontar</button>`:`<button class="sec" data-open="${esc(r.id)}" data-mode="ver">Detalle</button>`)+addb(r)+del(r);
-  return`<div class="scroll"><table><thead><tr><th>Fecha</th>${showV?'<th>Vendedor</th>':''}<th>Producto</th><th class="n">Costo</th><th class="n">Cantidad</th><th class="n">Total (costo × cantidad)</th><th class="n">Descontado</th><th class="n">Stock</th><th></th></tr></thead><tbody>
-  ${rows.map(r=>`<tr><td>${fmtF(r.fecha)}</td>${showV?`<td><span class="pill ${vcls(r.vendedor)}">${esc(r.vendedor)}</span></td>`:''}<td>${esc(r.descripcion)}</td><td class="n">${money(r.costo)}</td><td class="n">${totalQ(r)}</td><td class="n">${money(r.costo*totalQ(r))}</td><td class="n">${r.descontado||0}</td><td class="n ${r.cantidad<=5?'low-t':''}"><b>${r.cantidad}</b></td><td>${btn(r)}</td></tr>`).join('')}</tbody></table></div>`;
+  return`<div class="scroll"><table><thead><tr><th>Fecha</th>${showV?'<th>Vendedor</th>':''}<th>Lugar</th><th>Producto</th><th class="n">Costo</th><th class="n">Cantidad</th><th class="n">Total (costo × cantidad)</th><th class="n">Descontado</th><th class="n">Stock</th><th></th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td>${fmtF(r.fecha)}</td>${showV?`<td><span class="pill ${vcls(r.vendedor)}">${esc(nom(r.vendedor))}</span></td>`:''}<td>${esc(r.lugar||'—')}</td><td>${esc(r.descripcion)}</td><td class="n">${money(r.costo)}</td><td class="n">${totalQ(r)}</td><td class="n">${money(r.costo*totalQ(r))}</td><td class="n">${r.descontado||0}</td><td class="n ${r.cantidad<=5?'low-t':''}"><b>${r.cantidad}</b></td><td>${btn(r)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function dashView(){
   const m={};
@@ -215,15 +274,15 @@ function dashView(){
    <div class="card stat"><b>${money(kTot)}</b><span>Total (costo × cantidad)</span></div></div>
   <div class="card"><h2>Stock por producto</h2>${bajos?`<p class="low-t">${bajos} producto(s) con 5 unidades o menos.</p>`:''}
   ${L.length?`<div class="scroll"><table><thead><tr><th>Producto</th><th>Nivel de stock</th><th class="n">Stock</th><th>Por vendedor</th></tr></thead><tbody>
-  ${L.map(x=>`<tr><td>${esc(x.nombre)}</td><td><div class="bar ${x.stock<=5?'low':''}"><i style="width:${Math.max(3,x.stock/max*100)}%"></i></div></td><td class="n ${x.stock<=5?'low-t':''}"><b>${x.stock}</b></td><td>${Object.entries(x.porV).map(([v,q])=>`<span class="pill ${vcls(v)}">${esc(v)}: ${q}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay productos registrados.</div>'}
+  ${L.map(x=>`<tr><td>${esc(x.nombre)}</td><td><div class="bar ${x.stock<=5?'low':''}"><i style="width:${Math.max(3,x.stock/max*100)}%"></i></div></td><td class="n ${x.stock<=5?'low-t':''}"><b>${x.stock}</b></td><td>${Object.entries(x.porV).map(([v,q])=>`<span class="pill ${vcls(v)}">${esc(nom(v))}: ${q}</span>`).join(' ')}</td></tr>`).join('')}</tbody></table></div>`:'<div class="empty">Todavía no hay productos registrados.</div>'}
   </div>`;
 }
 function bindMain(){
   const rf=$('#rf');
   if(rf)rf.onsubmit=async e=>{e.preventDefault();
-    const r={vendedor:me,fecha:$('#f').value,descripcion:$('#d').value.trim(),costo:parseFloat($('#c').value),cantidad:parseInt($('#q').value,10),creado:Date.now()};
+    const r={vendedor:me,fecha:$('#f').value,lugar:$('#lg').value,descripcion:$('#d').value.trim(),costo:parseFloat($('#c').value),cantidad:parseInt($('#q').value,10),creado:Date.now()};
     r.inicial=r.cantidad;r.descontado=0;
-    if(!r.descripcion||!(r.cantidad>0)||!(r.costo>=0))return;
+    if(!r.lugar||!r.descripcion||!(r.cantidad>0)||!(r.costo>=0))return;
     await addItem(r);msg='Producto guardado en tu historial.';render();
   };
   const bq=$('#bq');if(bq)bq.oninput=()=>{busq=bq.value;const p=bq.selectionStart;render();const n=$('#bq');n.focus();n.setSelectionRange(p,p)};
@@ -235,6 +294,14 @@ function bindMain(){
     render();
   });
   document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openModal(b.dataset.open,b.dataset.mode));
+  document.querySelectorAll('[data-aut]').forEach(b=>b.onclick=async()=>{
+    if(!(await autorizar(b.dataset.aut)))alert('No se pudo autorizar. Intenta de nuevo.');render();
+  });
+  document.querySelectorAll('[data-udel]').forEach(b=>b.onclick=async()=>{
+    const u=users.find(x=>x.id===b.dataset.udel);if(!u)return;
+    if(!confirm('¿Eliminar a '+unombre(u)+'? Perderá el acceso.'))return;
+    if(!(await eliminarUser(u.id)))alert('No se pudo eliminar. Intenta de nuevo.');render();
+  });
 }
 let modalId=null,modalMode='edit',mmsg='';
 function openModal(id,mode){if(mode==='add'&&me!=='administrador')return;modalId=id;modalMode=mode;mmsg='';renderModal()}
@@ -261,7 +328,7 @@ function renderModal(){
   const body=ev.map(e=>row(e.f,e.t,e.c,e.s)).join('')+prev;
   m.innerHTML=`<div class="ov" id="ov"><div class="dlg" role="dialog" aria-modal="true" aria-label="Movimientos de stock">
    <div class="dh"><h2>${add?'Agregar stock':edit?'Descontar stock':'Detalle de movimientos'}</h2><button class="sec x" id="cx" aria-label="Cerrar">✕</button></div>
-   <div class="dpad"><dl class="info"><dt>Vendedor</dt><dd>${esc(r.vendedor)}</dd><dt>Producto</dt><dd>${esc(r.descripcion)}</dd><dt>Costo unitario</dt><dd>${money(r.costo)}</dd><dt>Cantidad</dt><dd>${tq}</dd><dt>Total (costo × cantidad)</dt><dd>${money(r.costo*tq)}</dd><dt>Stock actual</dt><dd class="${r.cantidad<=5?'low-t':''}">${r.cantidad}</dd></dl>
+   <div class="dpad"><dl class="info"><dt>Vendedor</dt><dd>${esc(nom(r.vendedor))}</dd><dt>Lugar</dt><dd>${esc(r.lugar||'—')}</dd><dt>Producto</dt><dd>${esc(r.descripcion)}</dd><dt>Costo unitario</dt><dd>${money(r.costo)}</dd><dt>Cantidad</dt><dd>${tq}</dd><dt>Total (costo × cantidad)</dt><dd>${money(r.costo*tq)}</dd><dt>Stock actual</dt><dd class="${r.cantidad<=5?'low-t':''}">${r.cantidad}</dd></dl>
     ${edit||add?form:''}<p class="${mmsg[0]==='!'?'err':'ok'}">${esc(mmsg.replace(/^!/,''))}</p>
     <div class="scroll"><table class="mini"><thead><tr><th>Fecha</th><th>Movimiento</th><th class="n">Cantidad</th><th class="n">Stock</th></tr></thead><tbody>${body}</tbody></table></div>
    </div></div></div>`;
