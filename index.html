@@ -280,7 +280,7 @@ const totDesc=r=>r.descuentos?r.descuentos.reduce((s,d)=>s+d.total,0):(r.descont
 function tabla(rows,showV,act){
   rows=rows.sort((a,b)=>String(b.fecha).localeCompare(String(a.fecha))||(b.creado||0)-(a.creado||0));
   if(!rows.length)return`<div class="empty">${busq.trim()?'No hay productos que coincidan con la búsqueda.':'Aún no hay registros. '+(act==='desc'?'Agrega tu primer producto en Registro.':'')}</div>`;
-  const del=r=>act==='desc'?` <button class="sec xdel" data-del="${esc(r.id)}" title="Eliminar producto" aria-label="Eliminar ${esc(r.descripcion)}">✕</button>`:'';
+  const del=r=>(act==='desc'||(act==='ver'&&me==='administrador'))?` <button class="sec xdel" data-del="${esc(r.id)}" title="Eliminar producto" aria-label="Eliminar ${esc(r.descripcion)}">✕</button>`:'';
   const addb=r=>act==='ver'?` <button class="add" data-open="${esc(r.id)}" data-mode="add">+ Stock</button>`:'';
   const btn=r=>(act==='desc'&&r.cantidad>0?`<button class="dis" data-open="${esc(r.id)}" data-mode="edit">Descontar</button>`:`<button class="sec" data-open="${esc(r.id)}" data-mode="ver">Detalle</button>`)+addb(r)+del(r);
   return`<div class="scroll"><table><thead><tr><th>Fecha</th>${showV?'<th>Vendedor</th>':''}<th>Lugar</th><th>Producto</th><th class="n">Costo</th><th class="n">Cantidad</th><th class="n">Total (costo × cantidad)</th><th class="n">Descontado</th><th class="n">Stock</th><th></th></tr></thead><tbody>
