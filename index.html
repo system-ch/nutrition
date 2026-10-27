@@ -257,8 +257,8 @@ function registroView(){
   return`<div class="card"><h2>Registrar producto</h2>
   <form class="grid form" id="rf">
    <label>Fecha<input type="date" id="f" value="${hoy()}" required></label>
-   <label>Lugar<select id="lg" required><option value="">Selecciona un lugar</option>${LUGARES.map(l=>`<option>${l}</option>`).join('')}</select></label>
-   <label>Descripción del producto<input id="d" placeholder="Ej. Alimento para perro adulto 15 kg" required></label>
+   <label>Lugar<input id="lg" type="text" autocomplete="off" required></label>
+   <label>Descripción del producto<select id="d" required><option value="">Selecciona un producto</option><option>Perro 9k</option><option>Gato 9k</option><option>Perro 15k</option></select></label>
    <label>Costo del producto (S/)<input id="c" type="number" min="0" step="0.01" required></label>
    <label>Cantidad<input id="q" type="number" min="1" step="1" required></label>
    <button type="submit">Guardar en historial</button></form>
@@ -273,7 +273,7 @@ function historialView(admin){
   if(!admin){return`<div class="card"><h2>Mi historial</h2><div style="margin-bottom:14px;max-width:420px">${buscador}</div>${tabla(items.filter(x=>x.vendedor===me&&ok(x)),false,'desc')}</div>`}
   const vs=['vendedor1','vendedor2',...users.filter(u=>u.aprobado).map(u=>u.dni)];
   const lista=filtro==='todos'?vs:[filtro];
-  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${esc(v)}" ${filtro===v?'selected':''}>${esc(nom(v))}</option>`).join('')}</select></label><label>Lugar<select id="flg"><option value="todos">Todos los lugares</option>${LUGARES.map(l=>`<option ${flg===l?'selected':''}>${l}</option>`).join('')}</select></label>${buscador}</div>`+
+  return`<div class="card grid form" style="margin-bottom:12px"><label>Ver historial de<select id="flt"><option value="todos">Todos los vendedores</option>${vs.map(v=>`<option value="${esc(v)}" ${filtro===v?'selected':''}>${esc(nom(v))}</option>`).join('')}</select></label><label>Lugar<select id="flg"><option value="todos">Todos los lugares</option>${[...new Set(items.map(x=>x.lugar).filter(Boolean))].map(l=>`<option ${flg===l?'selected':''}>${l}</option>`).join('')}</select></label>${buscador}</div>`+
    lista.map(v=>`<div class="card" style="margin-bottom:12px"><h2>Historial de ${esc(nom(v))}</h2>${tabla(items.filter(x=>x.vendedor===v&&ok(x)),false,'ver')}</div>`).join('');
 }
 const totDesc=r=>r.descuentos?r.descuentos.reduce((s,d)=>s+d.total,0):(r.descontado||0)*r.costo;
@@ -308,7 +308,7 @@ function dashView(){
 function bindMain(){
   const rf=$('#rf');
   if(rf)rf.onsubmit=async e=>{e.preventDefault();
-    const r={vendedor:me,fecha:$('#f').value,lugar:$('#lg').value,descripcion:$('#d').value.trim(),costo:parseFloat($('#c').value),cantidad:parseInt($('#q').value,10),creado:Date.now()};
+    const r={vendedor:me,fecha:$('#f').value,lugar:$('#lg').value.trim(),descripcion:$('#d').value.trim(),costo:parseFloat($('#c').value),cantidad:parseInt($('#q').value,10),creado:Date.now()};
     r.inicial=r.cantidad;r.descontado=0;
     if(!r.lugar||!r.descripcion||!(r.cantidad>0)||!(r.costo>=0))return;
     await addItem(r);msg='Producto guardado en tu historial.';render();
