@@ -87,7 +87,7 @@ tr.prev td{background:#fff3e3}
 .dl{list-style:none;margin:0;padding:0;display:grid;gap:6px;max-height:200px;overflow:auto}
 .dl li{display:flex;justify-content:space-between;gap:8px;background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:14px}
 @media(max-width:640px){.dbody{grid-template-columns:1fr}.tot{border-left:0;border-top:1px solid var(--line)}}
-</style>
+.ent{display:flex;align-items:center;gap:8px;margin:0;font-weight:600;white-space:nowrap;cursor:pointer}.ent input{width:22px;height:22px;margin:0;accent-color:#2e7d52;cursor:pointer}</style>
 </head>
 <body>
 <div id="app"></div><div id="modal"></div>
@@ -183,6 +183,11 @@ async function autorizar(id){
 async function eliminarUser(id){
   if(ucol){try{await ucol.doc(id).delete()}catch(e){return false}}
   users=users.filter(x=>x.id!==id);if(!ucol)saveUsersLocal();return true;
+}
+async function entregar(id,fecha){
+  if(col){try{await col.doc(id).update({entrega:fecha})}catch(e){return false}}
+  const r=items.find(x=>x.id===id);if(r){if(fecha)r.entrega=fecha;else delete r.entrega}
+  if(!col)saveLocal();return true;
 }
 async function eliminar(id){
   if(col){try{await col.doc(id).delete()}catch(e){return false}}
@@ -283,8 +288,8 @@ function tabla(rows,showV,act){
   const del=r=>(act==='desc'||(act==='ver'&&me==='administrador'))?` <button class="sec xdel" data-del="${esc(r.id)}" title="Eliminar producto" aria-label="Eliminar ${esc(r.descripcion)}">✕</button>`:'';
   const addb=r=>act==='ver'?` <button class="add" data-open="${esc(r.id)}" data-mode="add">+ Stock</button>`:'';
   const btn=r=>(act==='desc'&&r.cantidad>0?`<button class="dis" data-open="${esc(r.id)}" data-mode="edit">Descontar</button>`:`<button class="sec" data-open="${esc(r.id)}" data-mode="ver">Detalle</button>`)+addb(r)+del(r);
-  return`<div class="scroll"><table><thead><tr><th>Fecha</th>${showV?'<th>Vendedor</th>':''}<th>Lugar</th><th>Producto</th><th class="n">Costo</th><th class="n">Cantidad</th><th class="n">Total (costo × cantidad)</th><th class="n">Descontado</th><th class="n">Stock</th><th></th></tr></thead><tbody>
-  ${rows.map(r=>`<tr><td>${fmtF(r.fecha)}</td>${showV?`<td><span class="pill ${vcls(r.vendedor)}">${esc(nom(r.vendedor))}</span></td>`:''}<td>${esc(r.lugar||'—')}</td><td>${esc(r.descripcion)}</td><td class="n">${money(r.costo)}</td><td class="n">${totalQ(r)}</td><td class="n">${money(r.costo*totalQ(r))}</td><td class="n">${r.descontado||0}</td><td class="n ${r.cantidad<=5?'low-t':''}"><b>${r.cantidad}</b></td><td>${btn(r)}</td></tr>`).join('')}</tbody></table></div>`;
+  return`<div class="scroll"><table><thead><tr><th>Fecha</th>${showV?'<th>Vendedor</th>':''}<th>Lugar</th><th>Producto</th><th class="n">Costo</th><th class="n">Cantidad</th><th class="n">Total (costo × cantidad)</th><th>Entrega</th><th class="n">Descontado</th><th class="n">Stock</th><th></th></tr></thead><tbody>
+  ${rows.map(r=>`<tr><td>${fmtF(r.fecha)}</td>${showV?`<td><span class="pill ${vcls(r.vendedor)}">${esc(nom(r.vendedor))}</span></td>`:''}<td>${esc(r.lugar||'—')}</td><td>${esc(r.descripcion)}</td><td class="n">${money(r.costo)}</td><td class="n">${totalQ(r)}</td><td class="n">${money(r.costo*totalQ(r))}</td><td><label class="ent"><input type="checkbox" data-ent="${esc(r.id)}" ${r.entrega?'checked':''} aria-label="Marcar entregado"><span>${r.entrega?fmtF(r.entrega):''}</span></label></td><td class="n">${r.descontado||0}</td><td class="n ${r.cantidad<=5?'low-t':''}"><b>${r.cantidad}</b></td><td>${btn(r)}</td></tr>`).join('')}</tbody></table></div>`;
 }
 function dashView(){
   const m={};
@@ -320,6 +325,12 @@ function bindMain(){
     const r=items.find(x=>x.id===b.dataset.del);if(!r)return;
     if(!confirm('¿Eliminar "'+r.descripcion+'" del historial? Esta acción no se puede deshacer.'))return;
     if(!(await eliminar(r.id)))alert('No se pudo eliminar. Intenta de nuevo.');
+    render();
+  });
+  document.querySelectorAll('[data-ent]').forEach(c=>c.onchange=async()=>{
+    const on=c.checked;
+    if(!on&&!confirm('¿Quitar la fecha de entrega?')){c.checked=true;return}
+    if(!(await entregar(c.dataset.ent,on?hoy():'')))alert('No se pudo guardar. Intenta de nuevo.');
     render();
   });
   document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openModal(b.dataset.open,b.dataset.mode));
